@@ -132,7 +132,6 @@ class Salesforce(object):
         # in their own information
         if all(arg is not None for arg in (
                 username, password, security_token)):
-            self.auth_type = "password"
 
             # Pass along the username/password to our login helper
             self.session_id, self.sf_instance = SalesforceLogin(
@@ -144,6 +143,12 @@ class Salesforce(object):
                 proxies=self.proxies,
                 client_id=client_id,
                 domain=self.domain)
+
+            self.auth_type = "password"
+            self._username = username
+            self._password = password
+            self._security_token = security_token
+            self.organizationId = None
 
         elif all(arg is not None for arg in (
                 session_id, instance or instance_url)):
@@ -172,10 +177,18 @@ class Salesforce(object):
                 client_id=client_id,
                 domain=self.domain)
 
+            self.auth_type = "password"
+            self._username = username
+            self._password = password
+            self.organizationId = organizationId
+            self._security_token = None
+
         else:
             raise TypeError(
                 'You must provide login information or an instance and token'
             )
+
+        self._client_id = client_id
 
         self.auth_site = ('https://{domain}.salesforce.com'
                           .format(domain=self.domain))
@@ -233,10 +246,16 @@ class Salesforce(object):
             # Deal with bulk API functions
             return SFBulkHandler(self.session_id, self.bulk_url, self.proxies,
                                  self.session)
+        try:
+            return SFType(
+                name, self.session_id, self.sf_instance, sf_version=self.sf_version,
+                proxies=self.proxies, session=self.session)
+        except SalesforceExpiredSession:
+            self._reconnect()
+            return SFType(
+                name, self.session_id, self.sf_instance, sf_version=self.sf_version,
+                proxies=self.proxies, session=self.session)
 
-        return SFType(
-            name, self.session_id, self.sf_instance, sf_version=self.sf_version,
-            proxies=self.proxies, session=self.session)
 
     # User utility methods
     def set_password(self, user, password):
@@ -478,6 +497,9 @@ class Salesforce(object):
         result = self.session.request(
             method, url, headers=headers, **kwargs)
 
+        if result.status_code == 401: # SalesforceExpiredSession
+            self._reconnect(method, url, **kwargs)
+
         if result.status_code >= 300:
             exception_handler(result, name=name)
 
@@ -486,6 +508,51 @@ class Salesforce(object):
             self.api_usage = self.parse_api_usage(sforce_limit_info)
 
         return result
+
+    def _reconnect(self, method=None, url=None, **kwargs):
+
+        if self._security_token is None:
+            self.session_id, self.sf_instance = SalesforceLogin(
+                session=self.session,
+                username=self.username,
+                password=self.password,
+                organizationId=self.organizationId,
+                sf_version=self.sf_version,
+                proxies=self.proxies,
+                client_id=self.client_id,
+                domain=self.domain)
+        elif self.organizationId is None:
+            self.session_id, self.sf_instance = SalesforceLogin(
+                session=self.session,
+                username=self.username,
+                password=self.password,
+                security_token=self.security_token,
+                sf_version=self.sf_version,
+                proxies=self.proxies,
+                client_id=self.client_id,
+                domain=self.domain)
+
+        self.headers = {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + self.session_id,
+            'X-PrettyPrint': '1'
+        }
+
+        self.base_url = ('https://{instance}/services/data/v{version}/'
+                         .format(instance=self.sf_instance,
+                                 version=self.sf_version))
+        self.apex_url = ('https://{instance}/services/apexrest/'
+                         .format(instance=self.sf_instance))
+        self.bulk_url = ('https://{instance}/services/async/{version}/'
+                         .format(instance=self.sf_instance,
+                                 version=self.sf_version))
+
+        self.api_usage = {}
+
+        if method is not None:
+            self._call_salesforce(self, method, url, **kwargs)
+        return 1
+
 
     @property
     def request(self):
@@ -790,6 +857,9 @@ class SFType(object):
         headers.update(additional_headers or dict())
         result = self.session.request(method, url, headers=headers, **kwargs)
 
+        # if result.status_code == 401: # SalesforceExpiredSession
+        #     self._reconnect(method, url, **kwargs)
+
         if result.status_code >= 300:
             exception_handler(result, self.name)
 
@@ -810,6 +880,49 @@ class SFType(object):
             return response.status_code
 
         return response
+
+    # def _reconnect(self, method, url, **kwargs):
+    #
+    #     if self._security_token is None:
+    #         self.session_id, self.sf_instance = SalesforceLogin(
+    #             session=self.session,
+    #             username=self.username,
+    #             password=self.password,
+    #             organizationId=self.organizationId,
+    #             sf_version=self.sf_version,
+    #             proxies=self.proxies,
+    #             client_id=self.client_id,
+    #             domain=self.domain)
+    #     elif self.organizationId is None:
+    #         self.session_id, self.sf_instance = SalesforceLogin(
+    #             session=self.session,
+    #             username=self.username,
+    #             password=self.password,
+    #             security_token=self.security_token,
+    #             sf_version=self.sf_version,
+    #             proxies=self.proxies,
+    #             client_id=self.client_id,
+    #             domain=self.domain)
+    #
+    #     self.headers = {
+    #         'Content-Type': 'application/json',
+    #         'Authorization': 'Bearer ' + self.session_id,
+    #         'X-PrettyPrint': '1'
+    #     }
+    #
+    #     self.base_url = ('https://{instance}/services/data/v{version}/'
+    #                      .format(instance=self.sf_instance,
+    #                              version=self.sf_version))
+    #     self.apex_url = ('https://{instance}/services/apexrest/'
+    #                      .format(instance=self.sf_instance))
+    #     self.bulk_url = ('https://{instance}/services/async/{version}/'
+    #                      .format(instance=self.sf_instance,
+    #                              version=self.sf_version))
+    #
+    #     self.api_usage = {}
+    #
+    #     self._call_salesforce(self, method, url, **kwargs)
+    #     return 1
 
     @property
     def request(self):
