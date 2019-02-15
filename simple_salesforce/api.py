@@ -148,7 +148,7 @@ class Salesforce(object):
             self._username = username
             self._password = password
             self._security_token = security_token
-            self.organizationId = None
+            self._organizationId = None
 
         elif all(arg is not None for arg in (
                 session_id, instance or instance_url)):
@@ -180,7 +180,7 @@ class Salesforce(object):
             self.auth_type = "password"
             self._username = username
             self._password = password
-            self.organizationId = organizationId
+            self._organizationId = organizationId
             self._security_token = None
 
         else:
@@ -514,22 +514,22 @@ class Salesforce(object):
         if self._security_token is None:
             self.session_id, self.sf_instance = SalesforceLogin(
                 session=self.session,
-                username=self.username,
-                password=self.password,
-                organizationId=self.organizationId,
+                username=self._username,
+                password=self._password,
+                organizationId=self._organizationId,
                 sf_version=self.sf_version,
                 proxies=self.proxies,
-                client_id=self.client_id,
+                client_id=self._client_id,
                 domain=self.domain)
-        elif self.organizationId is None:
+        elif self._organizationId is None:
             self.session_id, self.sf_instance = SalesforceLogin(
                 session=self.session,
-                username=self.username,
-                password=self.password,
-                security_token=self.security_token,
+                username=self._username,
+                password=self._password,
+                security_token=self._security_token,
                 sf_version=self.sf_version,
                 proxies=self.proxies,
-                client_id=self.client_id,
+                client_id=self._client_id,
                 domain=self.domain)
 
         self.headers = {
