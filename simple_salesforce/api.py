@@ -12,6 +12,7 @@ import json
 import re
 from collections import namedtuple
 
+
 try:
     from urlparse import urlparse, urljoin
 except ImportError:
@@ -250,11 +251,13 @@ class Salesforce(object):
             return SFType(
                 name, self.session_id, self.sf_instance, sf_version=self.sf_version,
                 proxies=self.proxies, session=self.session)
-        except SalesforceExpiredSession:
+        except:
+            print('Reconnecting ...')
             self._reconnect()
+            print('... reconnected')
             return SFType(
-                name, self.session_id, self.sf_instance, sf_version=self.sf_version,
-                proxies=self.proxies, session=self.session)
+                    name, self.session_id, self.sf_instance, sf_version=self.sf_version,
+                    proxies=self.proxies, session=self.session)
 
 
     # User utility methods
@@ -497,8 +500,11 @@ class Salesforce(object):
         result = self.session.request(
             method, url, headers=headers, **kwargs)
 
-        if result.status_code == 401: # SalesforceExpiredSession
-            self._reconnect(method, url, **kwargs)
+        if result.status_code == 401:  # SalesforceExpiredSession
+            print('Reconnecting ...')
+            self._reconnect()
+            print('... reconnected')
+            self._call_salesforce(method, url, name=name, **kwargs)
 
         if result.status_code >= 300:
             exception_handler(result, name=name)
