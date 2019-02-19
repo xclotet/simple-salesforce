@@ -20,6 +20,7 @@ except ImportError:
     from urllib.parse import urlparse, urljoin
 
 from simple_salesforce.login import SalesforceLogin
+from simple_salesforce.exceptions import SalesforceExpiredSession
 from simple_salesforce.util import date_to_iso8601, exception_handler
 from simple_salesforce.exceptions import (
     SalesforceGeneralError
@@ -497,10 +498,11 @@ class Salesforce(object):
         additional_headers = kwargs.pop('headers', dict())
         headers.update(additional_headers)
 
-        result = self.session.request(
-            method, url, headers=headers, **kwargs)
-
-        if result.status_code == 401:  # SalesforceExpiredSession
+        try:
+            result = self.session.request(
+                method, url, headers=headers, **kwargs)
+        except SalesforceExpiredSession or requests.exceptions.ConnectionError:
+        # if result.status_code == 401:  # SalesforceExpiredSession
             print('Reconnecting ...')
             self._reconnect()
             print('... reconnected')
