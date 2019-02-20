@@ -498,15 +498,15 @@ class Salesforce(object):
         additional_headers = kwargs.pop('headers', dict())
         headers.update(additional_headers)
 
-        try:
-            result = self.session.request(
-                method, url, headers=headers, **kwargs)
-        except SalesforceExpiredSession or requests.exceptions.ConnectionError:
-        # if result.status_code == 401:  # SalesforceExpiredSession
+        result = self.session.request(
+            method, url, headers=headers, **kwargs)
+
+        if result.status_code == 401:  # SalesforceExpiredSession
             print('Reconnecting ...')
             self._reconnect()
             print('... reconnected')
-            self._call_salesforce(method, url, name=name, **kwargs)
+            result = self.session.request(
+                method, url, headers=headers, **kwargs)
 
         if result.status_code >= 300:
             exception_handler(result, name=name)
