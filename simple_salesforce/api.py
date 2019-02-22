@@ -505,6 +505,11 @@ class Salesforce(object):
             print('Reconnecting ...')
             self._reconnect()
             print('... reconnected')
+
+            headers = self.headers.copy()
+            additional_headers = kwargs.pop('headers', dict())
+            headers.update(additional_headers)
+
             result = self.session.request(
                 method, url, headers=headers, **kwargs)
 
